@@ -1,0 +1,25 @@
+# 仿真工程给 clangd 的索引配置。
+# 注意：esp-clangd 默认按 RISC-V(ESP32) 目标解析，这里显式切回 Windows x86_64，
+# 并补齐 MinGW / SDL2 / LVGL 的头文件路径，避免 "SDL.h/stddef.h not found"。
+CompileFlags:
+  Remove: [-f*, -m*]
+  Add:
+    - --target=x86_64-w64-windows-gnu
+    - -isystemC:/mingw64/x86_64-w64-mingw32/include
+    - -isystemC:/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include
+    - -isystemC:/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include-fixed
+    - -IC:/Users/q1325/Documents/Project/air_forge/sim
+    - -IC:/Users/q1325/Documents/Project/air_forge/ui
+    - -IC:/Users/q1325/Documents/Project/air_forge/ui/widgets
+    - -IC:/Users/q1325/Documents/Project/air_forge/ui/screens
+    - -IC:/Users/q1325/Documents/Project/air_forge/third_party/lvgl
+    - -IC:/Users/q1325/Documents/Project/air_forge/third_party/SDL2/x86_64-w64-mingw32/include
+    - '-DLV_CONF_PATH="C:/Users/q1325/Documents/Project/air_forge/sim/lv_conf.h"'
+    - -DLV_LVGL_H_INCLUDE_SIMPLE
+    - -DSDL_MAIN_HANDLED
+  BuiltinHeaders: QueryDriver
+Diagnostics:
+  # MinGW 头文件会重复声明 clang 的内建函数（__rdtsc/_xgetbv 等），忽略这两类冲突
+  Suppress:
+    - builtin_definition
+    - conflicting_types

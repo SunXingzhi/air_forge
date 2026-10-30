@@ -60,3 +60,4 @@ const lv_image_dsc_t ui_tex_oled = {
     .data_size = sizeof(ui_tex_oled_data),
     .data = ui_tex_oled_data,
 };
+

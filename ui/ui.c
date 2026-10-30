@@ -43,6 +43,9 @@ static lv_obj_t *screen_root_create(void) {
 static void screen_build(lv_obj_t *root, ui_screen_t id) {
 	if (id == UI_SCREEN_MENU) {
 		screen_menu_create(root);
+	} 
+	else if (id == UI_SCREEN_CHECK_ITEMS){
+		screen_check_items_create(root);
 	} else {
 		screen_home_create(root);
 	}

@@ -49,7 +49,10 @@
 │   └── p169h002/           屏幕 + 触摸板级驱动（SPI / I2C）
 ├── ui/                     ★ 平台无关的 LVGL 像素 UI
 │   ├── widgets/            面板 / 按钮 / 列表 / 滑条 / 进度条
-│   └── screens/            首页 / 设置页
+│   ├── screens/            首页 / 设置页
+│   └── assets/             纹理与图标资源
+│       ├── ui_assets.c     8x8 噪点纹理
+│       └── icons/          每个图标一个 xxx_icon.c + 统一 icon.h
 ├── sim/                    ★ 桌面仿真工程（SDL2）
 │   ├── CMakeLists.txt      Windows 用本地 SDL2，Linux 用系统 SDL2
 │   ├── lv_conf.h           LVGL 仿真配置

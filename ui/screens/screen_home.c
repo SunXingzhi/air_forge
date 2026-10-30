@@ -5,6 +5,8 @@
 
 #include "screen_home.h"
 
+#include "assets/icons/icon.h"
+#include "src/lv_api_map_v8.h"
 #include "ui.h"
 #include "ui_theme.h"
 
@@ -14,7 +16,7 @@
 #include "ui_progress.h"
 #include "ui_slider.h"
 
-// 
+//
 static const char *const home_items[] = {
     "FAN SPEED",
     "FILTER LIFE",
@@ -22,23 +24,17 @@ static const char *const home_items[] = {
     "SETTINGS",
 };
 
-static const char* const check_items[] = {
-	"PM2.5",
-	"TVOC"
-};
+static const char *const check_items[] = {"PM2.5", "TVOC"};
 
 static lv_obj_t *fan_slider;
 static lv_obj_t *fan_pct_label;
+
+extern const lv_img_dsc_t setting_icon;
 
 static void fan_slider_cb(lv_obj_t *slider, int32_t value, void *user_data) {
 	LV_UNUSED(slider);
 	LV_UNUSED(user_data);
 	lv_label_set_text_fmt(fan_pct_label, "%d%%", (int)value);
-}
-
-static void boost_cb(lv_event_t *e) {
-	LV_UNUSED(e);
-	ui_slider_set_value(fan_slider, 100, true);
 }
 
 static void menu_cb(lv_event_t *e) {
@@ -52,6 +48,18 @@ static void list_cb(lv_obj_t *list, int32_t index, void *user_data) {
 	if (index == 3) {
 		ui_goto(UI_SCREEN_MENU, false);
 	}
+}
+
+void screen_check_items_create(lv_obj_t *root) {
+	const ui_theme_t *theme = ui_theme();
+
+	/* ---------- PM2.5 读数 ---------- */
+	lv_obj_t *pm_panel = ui_panel_create(root, 12, 32, 216, 56);
+	ui_text_create(pm_panel, "PM2.5", UI_FONT_SMALL, theme->muted, 0, 0);
+	ui_text_create(pm_panel, "12", UI_FONT_TITLE, theme->text, 0, 8);
+	ui_text_create(pm_panel, "ug/m3", UI_FONT_SMALL, theme->muted, 36, 14);
+	ui_progress_create(pm_panel, 0, 28, 196, 8, 10, 30);
+	return;
 }
 
 void screen_home_create(lv_obj_t *root) {
@@ -94,6 +102,6 @@ void screen_home_create(lv_obj_t *root) {
 				      fan_slider_cb, NULL);
 
 	/* ---------- 底部按键 ---------- */
-	ui_button_create(root, "BOOST", 12, 240, 100, 28, boost_cb, NULL);
-	ui_button_create(root, "MENU", 128, 240, 100, 28, menu_cb, NULL);
+	ui_button_create_with_icon(root, &setting_icon, 128, 240, 100, 28,
+				   menu_cb, NULL);
 }

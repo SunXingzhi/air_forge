@@ -49,6 +49,8 @@ add_executable(air_forge_sim
 
 target_include_directories(air_forge_sim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../ui"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../ui/assets"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../ui/assets/icons"
     "${CMAKE_CURRENT_SOURCE_DIR}/../ui/widgets"
     "${CMAKE_CURRENT_SOURCE_DIR}/../ui/screens")
 

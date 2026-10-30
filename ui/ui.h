@@ -12,6 +12,7 @@
 typedef enum {
 	UI_SCREEN_HOME = 0,
 	UI_SCREEN_MENU,
+	UI_SCREEN_CHECK_ITEMS
 } ui_screen_t;
 
 /* 初始化并显示首页（需在 lv_init() 和显示驱动就绪后调用） */

@@ -2,8 +2,9 @@
  * @file main.c
  * AirForge LVGL 桌面仿真入口（Windows / SDL2）
  *
- * 运行后弹出一个 240x280 的窗口（放大 2 倍显示），
- * 鼠标左键 = 触摸，键盘 = 按键/编码器输入，滚轮 = 编码器旋转。
+ * 鼠标左键 = 触摸；滚轮 = 列表滚动。
+ * 键盘模拟物理控件：F = 功能键（风量循环），P = 电源键（短按息屏/唤醒，长按 3s
+ * 关机确认）。
  */
 
 #include <SDL2/SDL.h>
@@ -11,20 +12,16 @@
 #include "lvgl.h"
 #include "ui.h"
 
-/* 与 components/p169h002/include/board_pins.h 中的面板分辨率保持一致 */
 #define SIM_HOR_RES 240
 #define SIM_VER_RES 280
 
-/* 桌面显示放大倍数，1.0 = 与实机 1:1 像素；
- * 像素 UI 必须用整数倍，配合 DPI aware 才能保证每个像素是方块 */
+/* 整数倍放大，配合 DPI aware 与最近邻缩放保证像素是方块 */
 #define SIM_ZOOM 2.0f
 
 int main(void) {
 #ifdef _WIN32
-	/* 让窗口使用真实物理像素，避免 Windows 位图拉伸把像素糊掉 */
 	SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 #endif
-	/* SDL 缩放使用最近邻，保持像素边缘锐利 */
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
 
 	lv_init();
@@ -34,7 +31,8 @@ int main(void) {
 		SDL_Log("failed to create SDL window");
 		return 1;
 	}
-	lv_sdl_window_set_title(disp, "AirForge UI Simulator - 240x280");
+	lv_sdl_window_set_title(disp,
+				"AirForge UI - 240x280  [F=Fan  P=Power]");
 	lv_sdl_window_set_zoom(disp, SIM_ZOOM);
 
 	lv_indev_t *mouse = lv_sdl_mouse_create();
@@ -48,12 +46,43 @@ int main(void) {
 
 	ui_init();
 
+	bool f_prev = false;
+	bool p_prev = false;
+	bool p_long = false;
+	uint32_t p_down_ms = 0;
+
 	while (1) {
+		const Uint8 *keys = SDL_GetKeyboardState(NULL);
+
+		bool f_now = keys[SDL_SCANCODE_F] != 0;
+		if (f_now && !f_prev) {
+			ui_key_fn();
+		}
+		f_prev = f_now;
+
+		bool p_now = keys[SDL_SCANCODE_P] != 0;
+		if (p_now && !p_prev) {
+			p_down_ms = SDL_GetTicks();
+			p_long = false;
+		}
+		if (p_now && !p_long && (SDL_GetTicks() - p_down_ms) >= 3000u) {
+			p_long = true;
+			ui_key_power_long();
+		}
+		if (!p_now && p_prev) {
+			if (!p_long) {
+				ui_key_power_short();
+			}
+		}
+		p_prev = p_now;
+
 		uint32_t idle_ms = lv_timer_handler();
-		if (idle_ms < 5)
+		if (idle_ms < 5) {
 			idle_ms = 5;
-		if (idle_ms > 20)
+		}
+		if (idle_ms > 20) {
 			idle_ms = 20;
+		}
 		SDL_Delay(idle_ms);
 	}
 

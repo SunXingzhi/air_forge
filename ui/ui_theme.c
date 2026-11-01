@@ -17,6 +17,7 @@ static const ui_theme_t themes[UI_THEME_COUNT] = {
 	    .muted = LV_COLOR_MAKE(0xA3, 0x8A, 0x6D),
 	    .accent = LV_COLOR_MAKE(0xE4, 0xB0, 0x4A),
 	    .accent_text = LV_COLOR_MAKE(0x1A, 0x12, 0x09),
+	    .warn = LV_COLOR_MAKE(0xE0, 0xA3, 0x3E),
 	    .texture = &ui_tex_stone,
 	},
     [UI_THEME_OLED] =
@@ -29,22 +30,29 @@ static const ui_theme_t themes[UI_THEME_COUNT] = {
 	    .muted = LV_COLOR_MAKE(0x8A, 0x8A, 0x8A),
 	    .accent = LV_COLOR_MAKE(0xFF, 0xFF, 0xFF),
 	    .accent_text = LV_COLOR_MAKE(0x00, 0x00, 0x00),
+	    .warn = LV_COLOR_MAKE(0xFF, 0xB4, 0x3B),
 	    .texture = &ui_tex_oled,
 	},
 };
 
-static ui_theme_id_t current_theme = UI_THEME_STONE;
+static ui_theme_id_t current_theme = UI_THEME_OLED;
 
 const ui_theme_t *ui_theme(void) { return &themes[current_theme]; }
 
 ui_theme_id_t ui_theme_get(void) { return current_theme; }
 
 const char *ui_theme_name(void) {
-	return current_theme == UI_THEME_STONE ? "STONE" : "OLED";
+	return current_theme == UI_THEME_STONE ? "石木" : "OLED";
 }
 
 void ui_theme_next(void) {
 	current_theme = (ui_theme_id_t)((current_theme + 1) % UI_THEME_COUNT);
+}
+
+void ui_theme_set(ui_theme_id_t id) {
+	if (id >= 0 && id < UI_THEME_COUNT) {
+		current_theme = id;
+	}
 }
 
 lv_obj_t *ui_text_create(lv_obj_t *parent, const char *text,

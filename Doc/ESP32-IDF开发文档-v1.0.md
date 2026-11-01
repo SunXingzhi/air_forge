@@ -3,9 +3,9 @@
 | 项 | 内容 |
 |---|---|
 | 文档编号 | DEV-AIRFORGE-001 |
-| 版本 | v1.1（文件名沿用 v1.0） |
-| 日期 | 2026-10-25 |
-| 需求基线 | `Doc/需求文档-人机交互与硬件选型-v1.0.md`（REQ-AIRFORGE-001） |
+| 版本 | v1.2-ui（2026-11-01，UI 章节按当前 `ui/` 源码重写；文件名沿用 v1.0） |
+| 日期 | 2026-11-01 |
+| 需求基线 | `Doc/需求文档-人机交互与硬件选型.md`（REQ-AIRFORGE-001）。**UI 按 v1.1 的 CR-02（LVGL 9）实现**；v1.0 的页面树（P0–P5）、2×2 入口、2 键 2 灯继续有效。**OLED_UI 方案已废止**，仅保留为历史决策 |
 | 硬件基线 | ESP32-S3-DevKitC-1（N16R8）+ P169H002-CTP（ST7789T3 + CST816T） |
 | 软件基线 | ESP-IDF **v6.1.0**（`C:\esp\v6.1\esp-idf`），已确认 target=`esp32s3` |
 | 文档范围 | 软件架构、任务模型、驱动与适配层、配置/分区、构建调试、测试与里程碑；含厂商 P169H002 例程的引脚提取与移植说明。**不含电路级设计** |
@@ -14,27 +14,32 @@
 
 ## 0. 阅读结论（先看这一节）
 
-1. **当前工程只是空模板**：`main/main.c` 仅打印 Hello World；[sdkconfig](file:///c:/Users/q1325/Documents/Project/air_forge/sdkconfig) 仍是默认值（2 MB Flash、单 APP 分区、PSRAM 关闭、CPU 160 MHz），与 N16R8 模组（16 MB Flash + 8 MB Octal PSRAM）不符，**任何 UI/显存工作开始前必须先修正配置**。
+1. **工程已具备「点屏 demo + 完整 LVGL 自绘 UI」**：`components/p169h002/` 是厂商 ST7789/CST816T 例程的移植；`ui/` 是正式的 **LVGL 9.3 像素 UI**（P0–P5 + OFF、双主题、自绘控件），可在 `sim/` 桌面仿真运行；固件尚未接入（§8.7）。但 [sdkconfig](file:///c:/Users/q1325/Documents/Project/air_forge/sdkconfig) 仍是默认值（2 MB Flash、单 APP 分区、PSRAM 关闭、CPU 160 MHz），与 N16R8 模组（16 MB + 8 MB Octal PSRAM）不符，**进入 UI 固件接入/显存阶段前必须先修正配置**。
 2. **实际 IDF 为 v6.1.0**，该版本已移除 legacy `driver/i2c.h`，必须使用 `driver/i2c_master.h` 新 API；`esp_lcd` 已内置，但 **ST7789/CST816T 驱动未内置**，Component Registry 组件对 v6.1 的兼容性未验证，建议自带最小驱动（见 §7）。
 3. **屏幕 FPC 引脚已从手册确认**（18 pin）：VDD 典型 **3.0 V**、VDDIO 1.65–3.3 V、背光只引出 **LEDK 阴极**、触摸四线（TP_SCL/SDA/RST/INT）与屏共用一根 FPC。背光不能用 GPIO 直驱，需低边开关 + 限流；3.3 V 直供 VDD 已超手册上限（3.2 V），需 3.0 V 或降额确认。
 4. **BOM 只有 1 只 MS1100 + 1 只 GP2Y1014AU**，物理上无法同时得到「处理前 / 处理后」两组读数，**P0 验收项无法达成**；须补第二套或修改验收口径（见 B-02）。
 5. **两只模拟传感器均为 5 V 供电、输出可达 4.5 V**，ESP32-S3 ADC 上限约 3.3 V，必须加分压 + RC 滤波（新增硬件缺口 H-08）。
 6. 风机为感性负载且 MOS 板是否支持高频 PWM 未知；**续流二极管、栅极驱动、24 V→5 V、FPC 座、电源自锁均未采购**，这几项是联调硬门槛。
 7. **转接板出现“只有 MISO、没有 MOSI”与两种接口定义都不符**：CST816T 是 I2C（TP_SDA/TP_SCL），屏是 4 线 SPI 单根双向 SDA（pin 10，无独立 MISO）。必须先做通断核对（§6.2.1）；若板子是 SPI 触摸控制器（如 XPT2046）转接板，则与本屏不兼容。
-8. **厂商例程已分析并移植**：厂商 `ESP32-LCD-IDF/P169H002` 提供完整 ST7789 初始化序列、CST816T 寄存器表和坐标偏移（Y+5）；已移植到 `components/p169h002/`，`idf.py build` 通过（`air_forge.bin` 251 KB）。厂商 target 是 ESP32-C3，GPIO3/19 不能直接抄到 S3，已重映射（§6.2、§7.6）。
+8. **厂商例程已分析并移植**：厂商 `ESP32-LCD-IDF/P169H002` 提供完整 ST7789 初始化序列、CST816T 寄存器表和坐标偏移（Y+5）；已移植到 `components/p169h002/`，`idf.py build` 通过（`air_forge.bin` 约 251 KB）。厂商 target 是 ESP32-C3，GPIO3/19 不能直接抄到 S3，已重映射（§6.2、§7.6）。
+9. **UI 基线已切换为「自绘 + LVGL 9.3」**：`ui/` 不再是视觉原型，而是正式 UI 实现（平台无关，桌面仿真与固件共用）；P0–P5 + OFF、双主题、像素字体/图标/纹理、弹窗/提示、滑动转场均已落地。OLED_UI 方案废止，§8 已按实际源码重写。
+10. **固件尚未接入 LVGL**：`app_main` 仍调用 `p169h002_demo()`；`ui/` 目前只在 `sim/` 中运行，数据来自 `ui_state.c` 的仿真模型（无 NVS、无传感器、无风机）。接入清单见 §8.7。
 
-> 结论：**软件架构、点屏、触摸、UI 适配、按键/灯、状态机、NVS、控制台可以立即开工；「处理前后对比、过热保护、模拟采集、风机调速、整机上电」在硬件补齐前只能做桩（stub）与单元验证。**
+> 结论：**软件架构、点屏、触摸、UI 逻辑（已在仿真完整落地）、按键/灯、状态机、NVS、控制台可以立即开工；UI 的固件显示/触摸接入，以及「处理前后对比、过热保护、模拟采集、风机调速、整机上电」在硬件补齐前只能做桩（stub）与单元验证。**
 
 ---
 
 ## 1. 依据、范围与术语
 
-- 需求文档 §2 的 CR-01~CR-04 已生效：触摸屏为主输入/唯一信息出口；OLED_UI 为 UI 逻辑框架；物理控件仅 2 键 2 灯；编码器/情绪键取消。
-- 本文件把需求落到 **ESP-IDF 工程结构与接口** 一级，不展开寄存器时序与电路参数。
+- 需求文档 §2 的 CR-01~CR-04 生效：触摸屏为主输入/唯一信息出口；物理控件仅 2 键 2 灯；编码器/情绪键取消。页面树仍按 v1.0 的 P0–P5。
+- **UI 决策（2026-11-01，已落地）**：UI 采用 **自绘组件 + LVGL 9.3 逻辑层**（对应需求 v1.1 的 CR-02），**不再使用 OLED_UI**：
+  1. `ui/` 已实现 P0–P5 + OFF、双主题、像素字体/图标/纹理、弹窗/提示、滑动转场，并能在桌面仿真运行；
+  2. 视觉由自绘控件（硬阴影、2 px 描边、0 圆角、噪点纹理）实现，LVGL 只提供对象树、事件、定时器、动画与绘制后端；
+  3. 原 OLED_UI 方案（1 bpp 帧缓冲 + 虚拟四键）废止，仅保留为历史决策；§8 已按实际源码重写。
 - 术语：
-  - **OLED_UI**：`bdth-7777777/OLED_UI`，纯 C99、1 bpp 帧缓冲、四键输入模型、20 ms tick。
-  - **适配层（port）**：把 1 bpp 帧缓冲映射到 ST7789 RGB565，把触摸手势映射为虚拟四键。
-  - **业务快照（snapshot）**：传感器/风机/滤芯状态的只读结构体，供 UI 每帧读取。
+  - **widget**：`ui/widgets/` 下的自绘控件（panel/button/row/list/progress/slider/statusbar）。
+  - **port**：把 LVGL 的显示与输入接到 ST7789/CST816T 的胶水层（§8.7，尚未实现）。
+  - **业务快照（snapshot）**：传感器/风机/滤芯状态的只读结构体，供 UI 周期读取；当前由 `ui_state.c` 的仿真模型占位。
 
 ---
 
@@ -49,8 +54,8 @@
 | PSRAM | 关闭 | Octal 80 MHz，8 MB | 开启 `CONFIG_SPIRAM*` |
 | CPU | 160 MHz | 240 MHz | 改主频 |
 | FreeRTOS tick | 100 Hz | 1000 Hz | 改 `CONFIG_FREERTOS_HZ` |
-| 代码 | `components/p169h002/` 已落地厂商 demo（M1/M2 代码路径） | 按 §3.2 拆分组件 | 先实机验证点屏/触摸，再重构 |
-| 构建产物 | `air_forge.bin` 0x3D520（251 KB），单 APP 分区 1 MB，余 76% | 16 MB + 双 OTA | 配置改完后 `fullclean` 重建 |
+| 代码 | `components/p169h002/` 已落地厂商 demo；`ui/` 已落地 LVGL 9.3 自绘 UI（仿真可跑） | 按 §3.2 拆分组件，并把 `ui/` 接入固件 | 先实机验证点屏/触摸，再重构 |
+| 构建产物 | `air_forge.bin` 0x3EAE0（256,736 B，约 251 KB），单 APP 分区 1 MB，余 76% | 16 MB + 双 OTA | 配置改完后 `fullclean` 重建 |
 
 > 注意：`sdkconfig` 是生成物。正确做法是把目标配置写进 `sdkconfig.defaults`，删除 `sdkconfig` 后重新 `idf.py reconfigure`，避免手工改 `sdkconfig` 被覆盖。
 
@@ -65,9 +70,11 @@
 │ app 层：启动自检 / 设备状态机 / 事件分发 / 故障仲裁           │
 ├──────────────┬──────────────┬──────────────┬────────────────┤
 │ ui_service   │ sensor_svc   │ fan/filter   │ alarm/led/pwr  │
-│ (OLED_UI)    │ (ADC 采样)   │ (档位/寿命)   │ (弹窗/灯/息屏) │
+│ (LVGL 9.3)   │ (ADC 采样)   │ (档位/寿命)   │ (弹窗/灯/息屏) │
+│ ui/ 自绘 UI  │              │              │                │
 ├──────────────┴──────────────┴──────────────┴────────────────┤
-│ port 层：ui_port(1bpp→RGB565、脏矩形) / touch→虚拟四键        │
+│ port 层：lv_port_display(RGB565 + DMA/flush)                  │
+│          lv_port_indev(触摸/按键 → LVGL indev)                │
 ├─────────────────────────────────────────────────────────────┤
 │ driver 层：st7789 / cst816t / adc_frontend / fan_ledc / keys  │
 ├─────────────────────────────────────────────────────────────┤
@@ -78,7 +85,7 @@
 
 设计原则：
 
-- **UI 单线程**：OLED_UI 的所有状态与绘制只在 `ui_task` 中访问，避免其已知的指针/静态变量问题在并发下放大。
+- **UI 单线程**：所有 LVGL 调用（含 `lv_timer_handler()`、对象创建/删除）只在 `ui_task` 中执行；其他任务通过快照或 `lv_async_call()` 投递，禁止直接改 LVGL 对象。
 - **驱动不碰业务**：驱动只提供 `read/write` 与回调，档位、寿命、告警策略都在 service 层。
 - **服务通过事件与快照交互**：高频数据走快照（双缓冲 + 互斥），低频状态变化走事件队列。
 - **所有阻塞操作有超时**：I2C/ADC/NVS 均设上限，失败只降级不瘫痪。
@@ -90,7 +97,6 @@ components/
   bsp/            board_pins.h（唯一引脚真相）、板级初始化、电源保持
   display/        st7789.c（init/window/draw_bitmap）、backlight.c
   touch/          cst816t.c（i2c_master）、touch_gesture.c
-  ui/             oled_ui/（vendor，固定 commit）、ui_port.c、pages/
   sensors/        adc_frontend.c、ms1100.c、gp2y1014.c、ntc.c、sensor_service.c
   fan/            fan_ctrl.c（PWM/开关双后端）、fan_auto.c
   filter/         filter_life.c
@@ -98,12 +104,14 @@ components/
   settings/       settings.c（NVS 封装）
   power/          power_mgr.c（息屏、软关机、唤醒）
   app/            app_state.c、app_events.c、self_test.c
+ui/               LVGL 9.3 自绘 UI（与 sim 共用，见 §8，不放进 components/）
+sim/              桌面仿真（SDL2）
 main/             main.c（只负责 create/start，不放业务）
 ```
 
-每个组件独立 `CMakeLists.txt`；OLED_UI 作为 vendored 组件放在 `components/ui/oled_ui/`，**不改逻辑，只改 port 宏**。
+每个组件独立 `CMakeLists.txt`。`ui/` 保持平台无关，由 `sim/` 与固件各自编译，不放进 `components/`。
 
-> **已落地**：`components/p169h002/` 是厂商 ESP32-LCD-IDF 例程的移植版，含 ST7789 驱动、GB2312 字库、CST816T 驱动和点屏/触摸 demo。先以单组件完成 M1/M2 实机验证，再按上表拆成 `display/`、`touch/`。
+> **已落地**：`components/p169h002/` 是厂商 ESP32-LCD-IDF 例程的移植版，含 ST7789 驱动、GB2312 字库、CST816T 驱动和点屏/触摸 demo；`ui/` 是完整的 **LVGL 9.3 自绘 UI**（P0–P5 + OFF），已在 `sim/` 运行。二者尚未在固件里合并（`app_main` 仍调用 `p169h002_demo()`）。
 
 ---
 
@@ -114,7 +122,7 @@ main/             main.c（只负责 create/start，不放业务）
 | 任务 | 优先级 | 栈 | 核心 | 触发 | 职责 |
 |---|---|---|---|---|---|
 | `app_task` | 9 | 5 KB | 0 | 事件队列 | 状态机、故障仲裁、页面切换命令 |
-| `ui_task` | 7 | 10 KB | 1 | 20 ms tick + flush 完成信号 | 调 `OLED_UI_InterruptHandler`、渲染、刷屏 |
+| `ui_task` | 7 | 12 KB | 1 | 5–20 ms 周期 + flush 完成信号 | `lv_timer_handler()`、LVGL 渲染、刷屏、UI 事件 |
 | `sensor_task` | 6 | 5 KB | 0 | 10 ms `vTaskDelayUntil` | GP2Y 脉冲采样、1 s 聚合、预热/异常判定 |
 | `touch_task` | 6 | 4 KB | 1 | INT 下降沿 / 20 ms 轮询 | 读坐标、手势识别、健康心跳 |
 | `fan_task` | 5 | 3 KB | 0 | 队列 | 软启动/降档、互锁、PWM 输出 |
@@ -124,7 +132,7 @@ main/             main.c（只负责 create/start，不放业务）
 
 约束：
 
-- `ui_task` 是 **唯一** 允许调用 OLED_UI 的任务；20 ms 定时器回调只做 `xTaskNotifyGive(ui_task)`，不在 `esp_timer` 回调里跑 UI（回调运行在 esp_timer 任务，阻塞会拖垮其他定时器）。
+- `ui_task` 是 **唯一** 允许调用 LVGL 的任务；tick 只做 `lv_tick_inc(1)` 或通知，不在 `esp_timer` 回调里跑 `lv_timer_handler()`（回调运行在 esp_timer 任务，阻塞会拖垮其他定时器）。跨任务改 UI 一律走 `lv_async_call()`。
 - 所有 ISR 只 `xQueueSendFromISR` / `vTaskNotifyGiveFromISR`，不做 I2C、ADC、日志。
 - 若 `ui_task` 因刷屏错过 20 ms tick，按累计 tick 数连续调用 handler（设上限），保持动画/停留时间以真实时间为准。上一帧 flush 未完成时跳过本帧渲染，避免队列堆积。
 - 任务栈用 `uxTaskGetStackHighWaterMark()` 在联调期实测后收敛，初始值仅作上限参考。
@@ -165,6 +173,8 @@ typedef enum {
 } app_evt_id_t;
 ```
 
+> 当前 `ui/` 尚未接入 app 事件队列：按键/触摸直接调用 `ui_key_fn()`、`ui_key_power_short()`、`ui_key_power_long()`，页面内回调直接改 `g_ui`。接入业务层时把这些入口替换为事件投递（见 §8.7），UI 内部逻辑不变。
+
 ---
 
 ## 5. 状态机与故障仲裁
@@ -202,7 +212,7 @@ typedef enum {
 | 自动 | 由算法输出 | **否**（仅触摸） | 入口浓度 + 迟滞 + 30 s 驻留 |
 
 - 物理键循环严格为 停→弱→中→强→停，不进入自动（R-UI-02）。
-- 自动档：取 PM 与 VOC 各自映射档位的较大值；阈值带 ±10% 迟滞，切换最小间隔 30 s，防抖。
+- 自动档：取 PM 与 VOC 各自映射档位的较大值；阈值带 ±10% 迟滞，切换最小间隔 30 s，防抖。**当前 `ui_state.c` 是占位算法**（按处理后 PM2.5 的 75/35/15 分档），正式策略由 `fan_auto` 替换。
 - 风机软启动用 `ledc_set_fade_with_time()`；若 MOS 板不支持高频 PWM，则切换为「4 档开关 + 延时」后端，接口不变。
 
 ---
@@ -252,7 +262,7 @@ typedef enum {
 | LCD | DC | 14 | |
 | LCD | RST | 15 | |
 | LCD | PWR/BL | 16 | 厂商例程 BLK 高有效；先 GPIO 高开，确认转接板驱动后可 LEDC 调光 |
-| Touch | SDA | 8 | I2C 400 kHz，4.7 kΩ 上拉 |
+| Touch | SDA | 8 | I2C 100 kHz（bring-up 值），4.7 kΩ 上拉 |
 | Touch | SCL | 9 | |
 | Touch | INT | 10 | 低有效，10 kΩ 上拉 |
 | Touch | RST | 18 | |
@@ -413,7 +423,7 @@ i2c_new_master_bus(&bus, &s_bus);
 i2c_device_config_t dev = {
     .dev_addr_length = I2C_ADDR_BIT_LEN_7,
     .device_address = 0x15,            // 厂商例程确认
-    .scl_speed_hz = 400000,
+    .scl_speed_hz = 100000,            // bring-up 值；稳定后再评估 400 kHz
 };
 i2c_master_bus_add_device(s_bus, &dev, &s_dev);
 ```
@@ -428,7 +438,7 @@ i2c_master_bus_add_device(s_bus, &dev, &s_dev);
 | `0x05/0x06` | Y 高位/低位 | `Y = (((b2 & 0x0F) << 8) | b3) + 5` |
 | `0xA7` | ChipID | 通信/健康自检 |
 | `0xE5` | SleepMode | 写 `0x03` 进入睡眠 |
-| `0xF9` | AutoSleepTime | 厂商写 5（秒） |
+| `0xF9` | AutoSleepTime | 厂商写 5（秒）；本项目 bring-up 阶段不写，避免芯片睡眠后 MCU 复位无法唤醒 |
 
 本项目驱动接口（`components/p169h002/include/cst816.h`）：
 
@@ -523,12 +533,12 @@ void fan_force_stop(void);                    // 过热/关机用，绕过普通
 | `pic.h`（2.1 MB logo） | 未移植 | 避免 2.1 MB rodata 占用 app 分区；需要时再加 |
 | `main.c` | `main/main.c` | 只调用 `p169h002_demo()` |
 
-构建结果（2026-10-25）：
+构建结果（2026-11-01）：
 
 - target `esp32s3`，ESP-IDF v6.1.0，`idf.py build` 通过。
-- `air_forge.bin` 0x3D520（251,168 B）；单 APP 分区 1 MB，余 76%。
+- `air_forge.bin` 0x3EAE0（256,736 B）；单 APP 分区 1 MB，余 76%。
 
-**实机 bring-up 记录（2026-10-26，COM9，ESP32-S3 rev0.2）**：
+**实机 bring-up 记录（2026-10-31，COM10，ESP32-S3 rev0.2）**：
 
 - 烧录成功；LCD 初始化日志正常：`240x280, y_offset=20, SPI=10 MHz`，引脚 `SCLK=12 MOSI=11 CS=13 DC=14 RST=15 BL=16`。
 - CST816T：`chip id read failed: ESP_ERR_INVALID_RESPONSE`；I2C 全地址扫描（0x08–0x77）无设备；把 SDA/SCL 交换后重试仍无设备。
@@ -546,107 +556,110 @@ void fan_force_stop(void);                    // 过热/关机用，绕过普通
 
 ---
 
-## 8. UI 方案：OLED_UI 适配层
+## 8. UI 方案：自绘组件 + LVGL 9.3
 
-### 8.1 适配边界
+> 本章按当前 `ui/` 源码重写（2026-11-01）。**不使用 OLED_UI**；UI 由 LVGL 9.3 承载，视觉全部由自绘像素组件实现。
 
-```
-┌──────────────────────────────────────────────┐
-│ pages/：P0–P5、W 弹窗（业务与文案）           │
-├──────────────────────────────────────────────┤
-│ OLED_UI 逻辑层（vendor，固定 commit）         │
-│ MenuPage / MenuItem / MenuWindow / 动画       │
-├───────────────────┬──────────────────────────┤
-│ ui_port_display   │ ui_port_input            │
-│ 1bpp → RGB565     │ 触摸 → 虚拟四键           │
-│ 脏矩形 + DMA      │ 单击/滑动/双击/长按        │
-├───────────────────┴──────────────────────────┤
-│ st7789 / cst816t                              │
-└──────────────────────────────────────────────┘
-```
+### 8.1 现状与边界
 
-只允许修改 OLED_UI 的三个 port 点：
+- `ui/` 是**正式 UI 实现**，不是原型：纯 C、只依赖 LVGL，不调用任何 ESP-IDF/SDL API。
+- 同一份源码被两处编译：
+  - `sim/CMakeLists.txt` 用 `file(GLOB_RECURSE ui/*.c)` + SDL2 桌面窗口（240×280，2× 整数放大，最近邻缩放）；
+  - 固件接入后由 `main/` 把它编进固件（**当前尚未接入**，`app_main` 仍跑厂商 demo）。
+- 数据层是 `ui_state.c` 的仿真模型（`g_ui`）：4 条滤芯、PM/VOC 前后值、风量 5 档（含停/自动）、60 点历史、亮度/息屏/单位/主题。**没有 NVS、没有传感器/风机**，接入业务层后由服务层写入（见 §8.7）。
+- 输入是 LVGL `indev`（触摸）+ 2 个物理键回调；**没有虚拟四键**，也没有 OLED_UI 的页面注册表。
 
-1. `OLED_Update()` → `ui_port_flush(fb, w, h)`；
-2. 四键读取宏 → `ui_port_read_keys()` 返回 `UP/DOWN/ENTER/BACK` 位图；
-3. 20 ms tick → `ui_task` 调用 `OLED_UI_InterruptHandler()`。
+### 8.2 文件职责
 
-### 8.2 显示适配
-
-| 项 | 值 |
+| 路径 | 职责 |
 |---|---|
-| 分辨率宏 | `OLED_WIDTH=240`、`OLED_HEIGHT=280` |
-| 1 bpp 帧缓冲 | 240×280/8 = **8.4 KB**（内部 RAM） |
-| 上一帧副本 | 8.4 KB（用于差分） |
-| RGB565 条带缓冲 | 240×24×2 = **11.5 KB × 2**（内部 DMA 可访问） |
-| 可选整帧 | 134.4 KB（PSRAM，仅截图/调试） |
-| 刷新策略 | 逐 8 行带比较，合并为脏矩形；按条带 `draw_bitmap` |
-| 目标帧率 | ≥25 fps（脏面积 <60% 时） |
+| `ui/ui.c` | 屏幕管理、整块滑动转场、亮度遮罩、息屏、物理键入口、换芯提醒调度 |
+| `ui/ui_state.c` | `ui_state_t g_ui` 与仿真数据（风量/滤芯/PM/VOC/历史/设置） |
+| `ui/ui_theme.c` | 主题色板、纹理、字体选择与 `ui_text_create()` |
+| `ui/ui_popup.c` | 模态弹窗（1/2 按钮）与 2 s `ui_toast()` |
+| `ui/screens/` | P0 启动、P1 主页、P2 风量、P3 滤芯、P4 数据、P5 设置、OFF 关机 |
+| `ui/widgets/` | `ui_panel`、`ui_button`、`ui_row`、`ui_list`、`ui_progress`、`ui_slider`、`ui_statusbar` |
+| `ui/assets/` | `ui_assets.c` 噪点纹理、`fonts/` 像素字体、`icons/` A8 图标 |
+| `resources/` | 字体 TTF、图标 SVG、logo 源文件与生成脚本（唯一事实源） |
 
-带宽核算（SPI 40 MHz，含命令开销）：
+### 8.3 页面结构
 
-- 整帧 134.4 KB ≈ 27 ms → 理论上限 ~37 fps，实际受脏矩形与队列开销影响；
-- 典型页面（状态栏 + 数值变化）脏面积 <20%，单帧 <6 ms，25 fps 有余量；
-- 若 40 MHz 下不稳，先降到 30 MHz 再查排线/地回流，**不要直接上 80 MHz**。
-
-颜色映射：1 bpp 的 1/0 映射到前景/背景。为保留彩色观感，适配层按页面状态选调色板：
-
-| 场景 | 背景 | 前景 |
+| 页面 | 文件 | 内容与入口 |
 |---|---|---|
-| 常规页面 | `#000000` | `#00E5FF` |
-| 滤芯提醒 | `#000000` | `#FFB000` |
-| 故障/过热 | `#000000` | `#FF3B30` |
-| 反色光标 | 前背景互换 | |
+| P0 启动 | `screens/screen_boot.c` | Logo + “自检 0–100%”进度动画（2.2 s），点击任意处跳过；结束后进 P1 并调度换芯提醒 |
+| P1 主页 | `screens/screen_home.c` | 状态栏；处理前/后 PM2.5、TVOC、效率；2×2 入口（风量/滤芯/数据/设置）；底部运行/累计时长 |
+| P2 风量 | `screens/screen_fan.c` | 5 行：停/弱/中/强/自动；选中行反色 + `>` 光标 + 4 格强度条；切换后 2 s toast |
+| P3 滤芯 | `screens/screen_filter.c` | 4 行：金属网/中效棉/活性炭A/活性炭B；百分比 + 分段进度条 + 剩余天数；**长按 1.5 s 复位单条** |
+| P4 数据 | `screens/screen_data.c` | PM/VOC 前后 4 格 + 效率 + 60 点双序列折线 + 传感器状态（预热/正常/过热） |
+| P5 设置 | `screens/screen_settings.c` | 可滚动列表：主题/亮度/息屏/VOC 单位/校准（长按）/恢复出厂（长按）/关于 |
+| OFF 关机 | `ui.c` 内建 | “关机 / 按 P 键开机”静态页 |
+| W 弹窗 | `ui_popup.c` | 关机确认、换芯提醒、校准确认、恢复出厂确认；`ui_toast()` 2 s 操作提示 |
 
-### 8.3 触摸 → 虚拟四键
+### 8.4 交互与输入
 
-OLED_UI 只有 `UP/DOWN/ENTER/BACK`，因此映射必须遵循「先定位、再确认」：
-
-| 手势 | 映射 |
-|---|---|
-| 点击数列表项 | 按 y 计算行号 → 发送 `UP/DOWN` 使光标到该行 → 发送 `ENTER` |
-| 上/下滑 | 连续 `UP/DOWN`（按滑动距离折算步数） |
-| 左滑 | `BACK` |
-| 双击（主页面） | 直接调用风量循环（等价功能键），不走四键 |
-| 长按 1.5 s（主页面空白） | 打开 `P5 设置` |
-| 返回区（左上角 44×44） | `BACK` |
-
-实现要点：
-
-- 需要一份「页面布局注册表」（每页行高、可见行数、首行索引），因为 OLED_UI 不保证暴露几何信息；由 `pages/` 在进入页面时登记。
-- 虚拟按键按下保持 2 个 tick（40 ms）再释放，保证 OLED_UI 采样到；**一次手势只产生一个语义事件**。
-- 命中区 ≥44×44 px、相邻可点击元素间距 ≥8 px；列表行高按 48 px 设计，状态栏图标区同样满足最小命中。
-- 触摸事件在 `touch_task` 识别，`ui_task` 消费；不做跨任务直接改 UI 状态。
-- 触摸反馈：命中即反色，≤100 ms；滑动过程不触发点击（位移阈值 12 px）。
-
-### 8.4 页面落地
-
-| 页面 | 实现方式 | 说明 |
+| 操作 | 行为 | 实现 |
 |---|---|---|
-| P0 启动页 | `MenuPage EMPTY` + 自定义绘制 | Logo + 自检进度，≤3 s，可触摸跳过 |
-| P1 主页面 | 自定义绘制 + `TILES` 入口 | 状态栏 32 px；2×2 图标；底部时长 |
-| P2 风量 | `MenuPage LIST` | 5 项，当前项反色；切换后 2 s 提示窗 |
-| P3 滤芯寿命 | `MenuPage LIST` + 进度条 | 4 条寿命、剩余天数、长按复位 |
-| P4 实时数据 | 自定义绘制 | 前后数值 + 效率 + 60 s 迷你趋势（60 点环形缓冲） |
-| P5 设置 | `MenuPage LIST` | 亮度/息屏/单位/校准/恢复出厂/关于 |
-| W 弹窗 | `MenuWindow` | 档位、换芯、传感器、过热、恢复出厂、关机确认 |
+| 单击按钮/行 | 立即生效（风量、设置项、入口） | LVGL `LV_EVENT_CLICKED` |
+| 列表上下滑 | 设置页滚动 | LVGL 滚动容器 + 滚轮（仿真） |
+| 左滑 / 左上 44×44 热区 | 二级页返回主页 | `ui_attach_back()`：`LV_EVENT_GESTURE` + 透明热区 |
+| 长按 1.5 s | 滤芯复位、校准、恢复出厂、主页数据区进设置 | `lv_indev_set_long_press_time(1500)` |
+| 主页数据区双击 | 等价功能键：风量循环 | `LV_EVENT_DOUBLE_CLICKED` → `ui_key_fn()` |
+| 功能键短按（F） | 停→弱→中→强→停（AUTO 时回到停） | `ui_key_fn()`，2 s toast |
+| 电源键短按（P） | 关机态开机；开机态息屏/唤醒 | `ui_key_power_short()` |
+| 电源键长按 3 s（P） | 弹确认框，确认后软关机 | `ui_key_power_long()` |
+| 息屏时任意输入 | 只唤醒，不触发业务 | `ui_wake_if_sleeping()` 返回 true 时吞掉 |
 
-字体与主题：
+实现约束：
 
-- 正文 16 px（拉丁/数字）、标题 20 px；中文内置 12×12，正文中文可读性偏弱，**建议补 16×16 中文子集**（按实际文案裁剪，放 Flash rodata）。
-- 中文标题用 12×12 做 2× 整数放大（24 px）作为过渡方案；正式版再换 16×16。
-- 所有文案集中到 `pages/strings.c`，便于换字体与做中英切换。
+- 命中区 ≥44×44 px；列表行高 44 px；相邻可点击元素间距 ≥8 px。
+- 触摸事件由 `ui_task` 内的 LVGL indev 读取，其他任务不改 UI 状态。
+- 触摸反馈 ≤100 ms（按钮按下位移 2 px + 底色翻转）；滑动阈值由 LVGL 手势判定。
 
-### 8.5 风险与止损门槛
+### 8.5 主题、字体与资源
+
+- 两套主题：`UI_THEME_OLED`（纯黑单色，默认）与 `UI_THEME_STONE`（石木暖色，泰拉瑞亚风格），`ui_theme.c` 提供色板与 8×8 噪点纹理；设置页可切换，切换后 `ui_reload()` 重建当前页。
+- 字体：Fusion Pixel（OFL）1 bpp 子集，`UI_FONT_TITLE = lv_font_fusion_12`（中文/正文）、`UI_FONT_SMALL = lv_font_fusion_8`（纯 ASCII 小字）。**中文一律 12 px**；8 px 中文字形会糊。
+- 图标：主页 4 个 24×24 A8 图标（风量/滤芯/数据/设置），启动页 48×48 唱片 logo；全部是 C 数组，无文件 I/O。
+- 生成链（只改源，不改生成物）：
+  - `resources/fonts/*.ttf` + `build_fonts.py` → `ui/assets/fonts/lv_font_fusion_12.c`、`lv_font_fusion_8.c`；
+  - `resources/gui_icons/*.svg` + `make_pixel_icons.py` → `ui/assets/icons/*.c` + `icon.h`（24×24 A8 图标）；
+  - logo：`resources/logo/*` + `make_logo.py` 产出 SVG/PNG 源图，`make_pixel_icons.py` 从 `resources/logo/png/airforge_recArm_48_stone.png` 生成 `ui/assets/icons/logo_icon.c`；
+  - 噪点纹理：`ui/assets/ui_assets.c`（8×8 RGB565 C 数组）。
+- 视觉规则：0 圆角、2 px 描边、3 px 硬阴影；像素字体不缩放（2× 整数放大只发生在仿真窗口）。
+
+### 8.6 动画、弹窗与电源
+
+- 页面转场：新页从 `dir × 240` 滑入、旧页滑出，8 步、每步 30 px、26 ms/步（`ui.c`），不做插值。
+- 弹窗：`lv_layer_top()` + 70% 黑幕 + 216×150 对话框；左/右两个按钮或单按钮；告警标题用 `theme->warn`。
+- 提示条：`ui_toast()` 200 px 宽、2 s 自动消失。
+- 亮度：仿真用 `dim_overlay`（0/1/2 → 50%/20%/透明）；实机改为背光 PWM。
+- 息屏：无操作 `screen_off_sec`（0/30/60 s）盖黑；不显示时钟，任意输入只唤醒。
+- 软关机：确认后 `powered=false`、风量停、进 OFF 页；实机还需停风机、关背光、释放电源保持（§9.4）。
+- 换芯提醒：启动页结束后 900 ms 检查 `ui_filter_min_pct() <= 15`，**每次上电只弹一次**。
+- 主题切换/恢复出厂用 `lv_async_call()`，避免在事件回调里删除当前页面。
+
+### 8.7 固件接入清单（未完成）
+
+| # | 事项 | 要点 | 验收 |
+|---|---|---|---|
+| 1 | LVGL 初始化/tick | `lv_init()`；1 ms tick 由 `esp_timer` 或 `lv_tick_set_cb` 提供 | `lv_timer_handler()` 周期稳定 |
+| 2 | 显示 port | `lv_display_create(240,280)`；`flush_cb` 用 `esp_lcd` SPI panel + DMA；RGB565 局部缓冲放内部 DMA RAM | 彩条/文字无错位、无撕裂 |
+| 3 | 触摸 port | `lv_indev_create` + `read_cb` 轮询 `cst816_read_touch()`（20–50 ms）；坐标已含 Y+5 | 点击位置与视觉一致 |
+| 4 | 物理键 | 2 键消抖后调用 `ui_key_fn()` / `ui_key_power_short()` / `ui_key_power_long()` | 任意页面生效 |
+| 5 | 业务绑定 | 用传感器/风机/滤芯服务写入快照，替换 `ui_state_tick()` 的仿真数据 | 数据不再随机波动 |
+| 6 | 配置 | 固件侧 `lv_conf.h`：`LV_COLOR_DEPTH=16`、`LV_MEM_SIZE`、按需开启 chart/label/image/slider | `idf.py size` 可接受 |
+| 7 | 线程 | `ui_task` 唯一调用 LVGL；其余任务走 `lv_async_call()` | 1 h 压测无崩溃 |
+| 8 | 资源 | 字体/图标 C 数组随固件链接；改中文文案后重跑 `build_fonts.py` | 无缺字/豆腐块 |
+
+### 8.8 风险与门槛
 
 | 风险 | 措施 |
 |---|---|
-| OLED_UI 在 ESP32 上有已知指针 bug | 固定 commit（记录 SHA）；开启 stack protector、heap poisoning、coredump；连续翻页 1 h 压测 |
-| 帧率不足 | 脏矩形 + 双条带 DMA；先 40 MHz，必要时降分辨率策略（不做缩放） |
-| 触摸映射复杂 | 先做「列表页 tap = 当前光标 ENTER」的最小可用版，再补按行定位 |
-| 字体版权 | 使用 SIL OFL 字体（如 Noto Sans SC）子集，记录来源与许可 |
-
-**方案切换门槛**（沿用需求 §4.4）：若适配层稳定后仍 <15 fps，或 100 次操作误触 >3 次，则切换 **LVGL v9 + `esp_lvgl_adapter`**；切换前必须核对组件对 IDF v6.1 的依赖范围。
+| LVGL 内存不足 | 局部绘制缓冲 + `LV_MEM_SIZE` 实测；大缓冲放 PSRAM，DMA 缓冲必须在内部 RAM |
+| 帧率不足 | 先 10–40 MHz SPI；只刷新脏区；目标 ≥25 fps |
+| 触摸命中率 | 44×44 最小命中区；长按 1.5 s；左滑返回；100 次操作误触 ≤3 次 |
+| 字体覆盖不全 | 字符集由脚本扫描 `ui/**/*.c` 自动收集，改文案必须重跑 |
+| 单线程违规 | 代码评审强制：非 `ui_task` 不得调用 LVGL API |
 
 ---
 
@@ -673,6 +686,7 @@ OLED_UI 只有 `UP/DOWN/ENTER/BACK`，因此映射必须遵循「先定位、再
 - `剩余% = 100 × (1 − 已用等效分钟 / (容量小时×60))`；剩余天数按「日均使用 4 h」估算并标注「估算」。
 - 阈值：≤15% 提醒（琥珀常亮）；=0 到期（琥珀快闪）；每 24 h 再提醒一次，可「稍后提醒」。
 - 持久化：每 10 min 或状态切换时由 `nvs_task` 合并写入，掉电最多丢 10 min。
+- **UI 侧当前是占位**：`g_ui.filter_pct[]` 是固定初值，`ui_filter_days()` 用 `pct × 30 / 100` 估算，长按复位只改内存；接入 `filter_life.c` 后按本节模型计算。
 
 ### 9.3 告警服务
 
@@ -774,7 +788,20 @@ storage,  data, spiffs,   0x622000, 0x9DE000,
 
 ## 11. 构建、烧录与调试
 
-当前 shell 中 `idf.py` 不在 PATH。**不要用 `C:\esp\v6.1\esp-idf\export.ps1`**：它指向不存在的 `C:\Users\q1325\.espressif\python_env\idf6.1_py3.13_env`，会报 “Python virtual environment not found”。本机实际由 EIM 安装，正确入口是：
+### 11.1 桌面仿真（UI 改动的必经验证）
+
+```powershell
+python scripts/fetch_deps.py
+cmake -S sim -B sim/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug
+cmake --build sim/build -j 8
+.\sim\build\air_forge_sim.exe
+```
+
+窗口为 240×280、2× 最近邻放大；鼠标左键 = 触摸，`F` = 功能键，`P` = 电源键（短按息屏/唤醒，长按 3 s 关机确认）。**改动 `ui/` 必须先通过仿真构建**，再谈固件接入。
+
+当前状态：`sim/build/air_forge_sim.exe`（2026-10-31 20:23）晚于所有 `ui/` 源文件，说明现有源码已通过仿真构建；界面截图见 `.screenshots/`。
+
+### 11.2 固件构建
 
 ```powershell
 . C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1
@@ -787,12 +814,20 @@ idf.py reconfigure
 idf.py build
 
 # 烧录与监视（端口按实际修改）
-idf.py -p COM5 -b 921600 flash monitor
+idf.py -p COMx -b 921600 flash monitor
+```
+
+若 EIM profile 不可用，等价入口是：
+
+```powershell
+$env:IDF_PYTHON_ENV_PATH='C:\Espressif\tools\python\v6.1\venv'
+$s = (& python 'C:\esp\v6.1\esp-idf\tools\activate.py' --export | Select-Object -Last 1)
+. $s
 ```
 
 EIM 环境细节：`IDF_PATH=C:\esp\v6.1\esp-idf`、`IDF_TOOLS_PATH=C:\Espressif`、Python venv=`C:\Espressif\tools\python\v6.1\venv`。
 
-**已实测**：2026-10-25 用上述入口执行 `idf.py build` 通过，生成 `build/air_forge.bin` 0x3D520（251,168 B）。当前 `sdkconfig` 仍是 2 MB / 单 APP / PSRAM 关闭，所以构建产物按 1 MB app 分区校验；切到 16 MB 双 OTA 前需要按 §10 改配置并 `fullclean`。
+**已实测**：2026-11-01 固件 `idf.py build` 通过，生成 `build/air_forge.bin` 0x3EAE0（256,736 B）。当前 `sdkconfig` 仍是 2 MB / 单 APP / PSRAM 关闭，所以构建产物按 1 MB app 分区校验；切到 16 MB 双 OTA 前需要按 §10 改配置并 `fullclean`。
 
 调试要点：
 
@@ -825,14 +860,14 @@ reboot / factory  # 重启 / 恢复出厂
 
 | 项 | 预算 | 位置 |
 |---|---|---|
-| 1 bpp 帧缓冲 ×2（当前/上一帧） | 16.8 KB | 内部 RAM |
-| RGB565 条带 ×2 | 23 KB | 内部 DMA RAM |
+| LVGL 绘制缓冲（RGB565 240×40）×2 | ~37.5 KB | 内部 DMA RAM |
+| LVGL 对象/定时器堆（`LV_MEM_SIZE`） | 64–96 KB（实测收敛） | 内部 RAM |
 | 任务栈合计（8 任务） | ~36 KB | 内部 RAM |
 | NVS/驱动/协议栈 | ~60 KB | 内部 RAM |
 | 整帧截图缓冲（可选） | 134.4 KB | PSRAM |
-| UI 字体/资源 | 0.2–1.5 MB | Flash（storage 或 rodata） |
+| UI 字体/图标/纹理 rodata | 约 0.15 MB（按当前 `ui/assets` 源码体积估计） | Flash（rodata） |
 
-- 内部 RAM 保持 ≥80 KB 余量；UI 大缓冲优先 PSRAM，但 **DMA 条带必须内部 RAM**。
+- 内部 RAM 保持 ≥80 KB 余量；大缓冲优先 PSRAM，但 **LVGL 的 DMA 绘制缓冲必须在内部 RAM**。
 - 刷屏 CPU 占用目标 <15%（Core 1），传感器任务 <5%。
 - 启动到 P1 可见 ≤3 s（含自检），自检失败也要在 3 s 内给出故障画面。
 
@@ -845,13 +880,13 @@ reboot / factory  # 重启 / 恢复出厂
 | R-UI-01 电源键短按/3 s/10 s | 手动计时 | 息屏↔唤醒；3 s 软关机；10 s 硬件断电 | 软关机需 H-06 |
 | R-UI-02 功能键循环 | 连按 8 次 | 停→弱→中→强→停，任意页面生效，2 s 提示 | 需按键硬件 |
 | R-UI-03/04 灯语义 | 逐状态观察 | 与 §3.6 一致，电源灯不参与告警 | 需 LED |
-| 触摸导航 | 全页面走查 100 次 | 无死路，误触 ≤3 次 | 是（点屏后） |
+| 触摸导航 | 全页面走查 100 次 | 无死路，误触 ≤3 次 | 是（仿真；实机待触摸 ACK） |
 | 处理前/后 + 效率 | 标准气源/替代气源 | 主页面可见，变化可辨 | **受阻 B-02** |
 | 触摸失效降级 | 拔触摸排线 | 功能键可切风量，电源键可关机，红灯提示 | 是（需按键） |
 | 换芯提醒 | 注入寿命 14%/0% | 弹窗 + 琥珀；24 h 再提醒 | 是（软件注入） |
 | 过热保护 | 加热 NTC / 注入温度 | 降档→停风机 + 红闪 + 弹窗 | **受阻 H-04** |
-| 息屏/唤醒/亮度/单位 | 手动 | 30/60/常亮生效；唤醒不触发业务 | 是 |
-| 连续翻页稳定性 | 1 h 自动翻页 | 无重启、无内存泄漏（heap 曲线平稳） | 是 |
+| 息屏/唤醒/亮度/单位 | 手动 | 30/60/常亮生效；唤醒不触发业务 | 是（仿真） |
+| 连续翻页稳定性 | 1 h 自动翻页 | 无重启、无内存泄漏（heap 曲线平稳） | 是（仿真）；实机待接入 |
 | 掉电续存 | 运行 11 min 后断电 | 滤芯累计误差 ≤10 min | 是 |
 
 ---
@@ -863,12 +898,12 @@ reboot / factory  # 重启 / 恢复出厂
 | M0 基线 | 修正 sdkconfig/分区/PSRAM/主频，工程组件化 | `idf.py build` 通过；`esp_psram_get_size()` 返回 8 MB |
 | M1 点屏 | ST7789 初始化、彩条、窗口刷新、背光调光 | 颜色/方向/偏移正确；整帧 ≥30 fps |
 | M2 触摸 | CST816T 通信、坐标标定、手势 | 点击/滑动/左滑识别正确，误触可接受 |
-| M3 UI 适配 | OLED_UI 移植、脏矩形、虚拟四键、P1/P2 | 1 h 翻页压测无崩溃；≥25 fps |
+| M3 UI | LVGL 9.3 自绘 UI（已完成于仿真）+ 固件显示/触摸接入 | 仿真 1 h 翻页无崩溃；实机 ≥25 fps、点击命中 |
 | M4 业务闭环 | 风机、传感器、滤芯、告警、状态机 | P0 除「双点数据」外全部可演示 |
 | M5 降级与电源 | 触摸失效、过热、息屏、软关机 | 拔排线/注入故障可复现降级路径 |
 | M6 工程化 | 控制台、coredump、OTA（可选）、日志策略 | 现场问题可定位；OTA 可回滚 |
 
-**当前进度**：M1/M2 的代码路径已落地（厂商 demo 移植），已在 COM10 实机复测；LCD 初始化日志通过，TRST 线测/释放均正常，但触摸 I2C 仍无 ACK。软件侧基本排除，当前阻塞在触摸物理层（B-15）。M0 尚未执行（sdkconfig 仍是 2 MB/单 APP/PSRAM 关闭）；M1/M2 的实机判据（颜色、偏移、坐标、背光）尚未全部验证。
+**当前进度**：`ui/` 的 LVGL 9.3 自绘 UI 已完整落地并在桌面上运行（P0–P5 + OFF）；固件侧仍是厂商 demo（M1/M2 代码路径），已在 COM10 实机复测：LCD 初始化日志通过，TRST 线测/释放均正常，但触摸 I2C 仍无 ACK（B-15）。M3 的固件接入尚未开始。M0 尚未执行（sdkconfig 仍是 2 MB/单 APP/PSRAM 关闭）；M1/M2 的实机判据（颜色、偏移、坐标、背光）尚未全部验证。
 
 ---
 
@@ -882,7 +917,7 @@ reboot / factory  # 重启 / 恢复出厂
 | B-04 | 屏 VDD 3.0 V / VDDIO 电平 | 3.3 V 越上限，可能不亮/偏色 | 供应商确认 + 3.0 V LDO；**背光已由厂商例程定性为 BLK/PWR 高有效** |
 | B-05 | ST7789T3/CST816T 完整手册缺失 | 只能按例程参数工作，极限值未知 | **部分解除**：厂商例程已给出 ST7789 初始化序列与 CST816T 寄存器表；仍需手册确认时序上限 |
 | B-06 | 故障态口径歧义（传感器异常是否停机） | 状态机与验收争议 | 需求方确认按 §3.7（不停机） |
-| B-07 | OLED_UI 具体 commit、许可证、ESP32 bug 状态 | 崩溃与返工风险 | 锁定 commit + SHA，完成 1 h 压测 |
+| B-07 | LVGL 固件接入未完成（显示 flush、触摸 indev、tick、`ui_task`） | UI 只能跑仿真，实机不可用 | 按 §8.7 接入并实机走查；1 h 压测 |
 | B-08 | 风机规格与 MOS 板 PWM 能力 | 无法确定 PWM 后端与软启动 | 风机规格书 + MOS 板原理图 + 续流评估 |
 | B-09 | 24 V→5 V、FPC 座、电源自锁、按键/LED 未采购 | 无法整机上电 | 补齐 H-01/H-05/H-06/H-11 |
 | B-10 | 无温度/差压传感器 | 过热保护与真实寿命不可实现 | 先补 NTC（H-04），差压列 v2 |
@@ -891,6 +926,7 @@ reboot / factory  # 重启 / 恢复出厂
 | B-13 | 转接板丝印/通路与 FPC 定义不符（“只有 MISO”） | 触摸无法初始化或屏无法写入 | **映射已推断**（§6.2.1）；仍要做 pin1–18 通断确认，必要时飞线 TP_SDA/TP_SCL |
 | B-14 | 转接板 RT_MISO(5)/RT_BUSY(4) 的用途 | 无（原理图已确认 NC） | 保持悬空，不接 ESP32 |
 | B-15 | **触摸 I2C 无 ACK；TRST 已确认正常（线测 1/0，释放后 1）** | 触摸全失效；软件侧已排除 | 按 §6.2.1 的 2×7 表核对触摸组（1/2/3/6/7/8）；量 TP_VCC=3.0 V、GND 通断、TP_SCL↔GPIO9、TP_SDA↔GPIO8；加 4.7 kΩ 上拉；确认触摸 IC 为 CST816T |
+| B-16 | `ui/` 数据仍是仿真模型（无 NVS/传感器/风机） | 页面数值不可信，掉电不保存 | 用服务层写快照，NVS 落地（§9.5） |
 
 **未在硬件上验证的内容**：移植 demo 的实际显示内容（已烧录并确认 LCD 初始化日志，但颜色/反色/偏移/背光尚未目视确认）、触摸 I2C（当前无 ACK，待 2×7 接线复核）、转接板 2×7 逐脚通断与 I2C 双向通路（§6.2.1）、ADC 分压后的量程、风机软启动与噪声、整机 24 V 上电时序与掉电保持。以上必须在样机到位后逐项实测，不能以代码编译通过替代。
 
@@ -900,5 +936,7 @@ reboot / factory  # 重启 / 恢复出厂
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v1.2-ui | 2026-11-01 | **按当前 `ui/` 源码重写 UI 章节**：UI 由「OLED_UI 适配层」改为「自绘组件 + LVGL 9.3」（P0–P5 + OFF、双主题、像素字体/图标、滑动转场、弹窗/息屏）；删除 OLED_UI / 虚拟四键 / 1 bpp 帧缓冲内容；新增 §8.7 固件接入清单与 §8.8 门槛；同步更新架构、任务、内存、测试与里程碑；构建产物更新为 0x3EAE0 |
+| v1.0-regen | 2026-10-31 | **按需求 v1.0（OLED_UI）重新生成**：明确不采用需求 v1.1 的 LVGL v9；工程基线更新为 `components/p169h002/` 点屏 demo；补充当前 bring-up 结果（LCD 初始化 OK、TRST 正常、触摸 I2C 无 ACK）；新增 §8.0 说明 `ui/` 原型中的 `TIMER`、`OSCILLATE` 非需求项 |
 | v1.0 | 2026-10-25 | 首版：基于需求 v1.0、实际工程基线（IDF v6.1.0）与屏幕手册，给出架构、任务、驱动、UI 适配、配置/分区、测试与阻塞项 |
 | v1.1 | 2026-10-25 | 补充厂商 `ESP32-LCD-IDF/P169H002` 例程分析：提取 C3/S3 引脚映射、ST7789 初始化序列、CST816T 寄存器表与 Y+5 偏移；PWR 定性为高有效背光使能；记录 demo 移植结果（`components/p169h002/`，251 KB，构建通过）与正确的 EIM 构建入口。文件名沿用 v1.0 |

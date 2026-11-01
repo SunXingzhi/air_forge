@@ -17,6 +17,10 @@ extern "C" {
 #endif
 
 extern const lv_image_dsc_t setting_icon;
+extern const lv_image_dsc_t fan_icon;
+extern const lv_image_dsc_t filter_icon;
+extern const lv_image_dsc_t data_icon;
+extern const lv_image_dsc_t logo_icon;
 
 #ifdef __cplusplus
 }

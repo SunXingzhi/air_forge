@@ -11,6 +11,7 @@
 #define UI_FILTER_COUNT 4
 #define UI_HISTORY_LEN 60
 
+// 风扇速度
 typedef enum {
 	UI_FAN_STOP = 0,
 	UI_FAN_LOW,
@@ -20,13 +21,15 @@ typedef enum {
 	UI_FAN_MODE_COUNT
 } ui_fan_t;
 
+// 滤芯生命周期管理
 typedef enum {
-	UI_FILTER_MESH = 0,
-	UI_FILTER_MEDIA,
-	UI_FILTER_CARBON_A,
-	UI_FILTER_CARBON_B
+	UI_FILTER_MESH = 0,	// 金属网
+	UI_FILTER_MEDIA,	// 中效棉
+	UI_FILTER_CARBON_A,	// 活性炭A
+	UI_FILTER_CARBON_B	// 活性炭B
 } ui_filter_t;
 
+// UI页面数据状态
 typedef struct {
 	bool powered;
 	ui_fan_t fan;
@@ -35,7 +38,7 @@ typedef struct {
 
 	bool pm_ok;
 	bool voc_ok;
-	bool overheat;
+	bool overheat;	// 
 
 	float pm_before;
 	float pm_after;

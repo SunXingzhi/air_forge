@@ -482,10 +482,16 @@ adc_cali_create_scheme_curve_fitting(&cal, &s_cali);
 - **软件点验路径**（仅调试）：`LED_DRV` 拉高 → `esp_rom_delay_us(280)` → 读 ADC → 拉低。注意 oneshot 转换需数十至上百 µs，实际脉宽会超过 320 µs 上限，不能作为量产时序。
 - 1 s 聚合 100 个点，去极值后取均值。
 
-**换算（占位，待手册/标定）**：
+**模拟前端参数（对应 `components/p169h002/include/board_pins.h`）**：
 
-- GP2Y：传感器输出电压 `Vout = adc_voltage × divider_ratio`；粉尘浓度 `mg/m³ = k × Vout + b`，Sharp 常用近似 `0.17 × Vout − 0.1`，**必须用 NVS 中的 k/b 标定值覆盖**，并钳位到 ≥0。
-- MS1100：`Rs = (Vc − Vout) / Vout × RL`（Vc=5 V，RL 按模块），`R0` 为洁净空气基准，`ppm = a × (Rs/R0)^b`，a/b 待手册；本期 UI 标注「气态综合（TVOC 等效）」，不分甲醛/苯。
+- GP2Y：Vo 经 **4.7 kΩ / 4.7 kΩ 分压 + 10 nF** 进 GPIO2；100 Hz 脉冲下 τ≈24 µs，280 µs 采样点已建立。
+- MS1100：AO 经 **100 kΩ / 100 kΩ 分压 + 10 nF** 进 GPIO1；模块输出源阻抗较高，分压电阻过小会把 AO 拉低。
+- 两路都用 `adc_oneshot` + 曲线拟合校准；校准不可用时驱动自动退回线性换算。
+
+**换算（驱动默认值，必须用标定值覆盖）**：
+
+- GP2Y（Sharp ED-15G001A）：`Vout = adc_voltage × divider_ratio`，洁净空气 `Voc` 典型 **0.6 V**，灵敏度 `K` 典型 **0.5 V / 100 µg/m³**；`µg/m³ = (Vout − Voc) × 100 / K`，钳位到 ≥0。规格书范围：Voc 0.1~1.1 V，K 0.425~0.575 V/100 µg/m³，**逐机标定**。
+- MS1100（模块内 KQ-2801）：`Rs = (Vc − Vout) / Vout × RL`（Vc=5 V，RL 典型 20 kΩ），`R0` 为洁净空气基准；浓度用模块手册的“输出电压—浓度”表做分段线性插值（甲醛 / 甲苯两条曲线，误差 ±7%，无温湿度补偿）。本期 UI 标注「气态综合（TVOC 等效）」，不分甲醛/苯。
 - NTC 10K B3950：`T = 1 / (1/T0 + ln(R/R0)/B) − 273.15`，10 k 上拉分压。
 
 **滤波与有效性**：

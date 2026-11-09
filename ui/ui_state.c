@@ -5,6 +5,7 @@
 
 #include "ui_state.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -52,9 +53,9 @@ void ui_state_init(void) {
 	g_ui.brightness = 1;
 	g_ui.screen_off_sec = 60;
 	g_ui.voc_unit = 0;
-	g_ui.theme_stone = false;
+	g_ui.theme_stone = true;
 
-	/* 预填一段 60s 历史，让数据页首次打开就有趋势可看 */
+	/* sim: 预填一段 60s 历史，让数据页首次打开就有趋势可看 */
 	static const float wave[12] = {33.0f, 34.0f, 35.0f, 36.0f,
 				       37.0f, 36.0f, 35.0f, 34.0f,
 				       33.0f, 32.0f, 31.0f, 32.0f};

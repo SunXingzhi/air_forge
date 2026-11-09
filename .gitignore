@@ -5659,3 +5659,8 @@ AirForge_阶段汇报_使用逻辑与选型_20261015.xlsx
 .screenshots/ui_home_oled.png
 .screenshots/ui_home_stone.png
 .screenshots/ui_menu_oled.png
+toolchain/asmflags
+toolchain/cflags
+toolchain/cxxflags
+toolchain/ldflags
+toolchain/toolchain-esp32s3.cmake
